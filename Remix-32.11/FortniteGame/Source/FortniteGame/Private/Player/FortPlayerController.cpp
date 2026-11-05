@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Shared.h"
+#include "Config.h"
 #include "FortniteGame/Source/FortniteGame/Public/Player/FortPlayerController.h"
 #include "FortniteGame/Source/FortniteAI/Public/AI/FortAthenaAIBotController.h"
 #include "FortniteGame/Source/FortniteGame/Public/Athena/FortGameModeAthena.h"
@@ -123,7 +124,7 @@ static void ServerCreateBuildingActor(UObject* Context, FFrame& Stack)
     static auto CantBuild = (int64 (*)(UWorld*, TSubclassOf<AActor>&, FVector, FRotator, bool, TArray<ABuildingSMActor*>*, char*))(ImageBase + 0x9A95ED4);
     static auto PayBuildableClassPlacementCost = (int32 (*)(AFortPlayerControllerAthena*, FBuildingClassData))(ImageBase + 0xA24BD50);
 
-    if (!CanAffordToPlaceBuildableClass(PlayerController, BuildingClassData, false))
+    if (!bInfiniteMats && !CanAffordToPlaceBuildableClass(PlayerController, BuildingClassData, false))
         return;
 
     TSubclassOf<AActor> BuildingActorClass = BuildingClass;
@@ -155,7 +156,7 @@ static void ServerCreateBuildingActor(UObject* Context, FFrame& Stack)
     Building->Team = (EFortTeam)PlayerState->TeamIndex;
     Building->TeamIndex = (uint8)Building->Team;
 
-    if (!PlayerController->bBuildFree)
+    if (!PlayerController->bBuildFree && !bInfiniteMats)
         PayBuildableClassPlacementCost(PlayerController, BuildingClassData);
 
     SendStatEvent(PlayerController->GetQuestManager(ESubGame::Athena), PlayerController, EFortQuestObjectiveStatEvent::Build, 1, true);
@@ -704,6 +705,9 @@ static void ServerOnMaterialSelection(UObject* Context, FFrame& Stack)
 
 static bool RemoveInventoryItem(void* Interface, FGuid& ItemGuid, int32 Count, bool bForceRemoval, bool bForcePersistWhenEmpty)
 {
+    if (bInfiniteAmmo)
+        return true;
+
     auto PlayerController = (AFortPlayerControllerAthena*)(__int64(Interface) - 0x878);
 
     return RemoveInventoryItem((AFortInventory*)PlayerController->WorldInventory.ObjectPointer, ItemGuid, Count, bForceRemoval, bForcePersistWhenEmpty);
@@ -734,12 +738,21 @@ static void StartSpecialEvent()
     if (MeshNetworkSubsystem)
         MeshNetworkSubsystem->NodeType = EMeshNetworkNodeType::Root;
 
-    MeshActor->MeshRootStartEvent();
+    auto MeshRootStartEvent = ASpecialEventScriptMeshActor::StaticClass()->GetFunction("SpecialEventScriptMeshActor", "MeshRootStartEvent");
+    auto MeshRootStartEventFlags = MeshRootStartEvent->FunctionFlags;
+    MeshRootStartEvent->FunctionFlags |= 0x400;
+    MeshActor->ProcessEvent(MeshRootStartEvent, nullptr);
+    MeshRootStartEvent->FunctionFlags = MeshRootStartEventFlags;
 
     if (MeshNetworkSubsystem)
         MeshNetworkSubsystem->NodeType = EMeshNetworkNodeType::Edge;
 
-    MeshActor->OnRep_RootStartTime(FDateTime());
+    auto OnRepRootStartTime = ASpecialEventScriptMeshActor::StaticClass()->GetFunction("SpecialEventScriptMeshActor", "OnRep_RootStartTime");
+    FDateTime OldRootStartTime{};
+    auto OnRepRootStartTimeFlags = OnRepRootStartTime->FunctionFlags;
+    OnRepRootStartTime->FunctionFlags |= 0x400;
+    MeshActor->ProcessEvent(OnRepRootStartTime, &OldRootStartTime);
+    OnRepRootStartTime->FunctionFlags = OnRepRootStartTimeFlags;
 }
 
 static void ServerCheat(UObject* Context, FFrame& Stack, void* Result)
@@ -807,11 +820,8 @@ static void ServerCheat(UObject* Context, FFrame& Stack, void* Result)
             Count = (int)ParsedCount;
         }
 
-        UEAllocatedWString ItemPath(Args[1].begin(), Args[1].end());
+        std::wstring ItemPath(Args[1].begin(), Args[1].end());
         auto ItemDefinition = FindObject<UFortItemDefinition>(ItemPath.c_str());
-
-        if (!ItemDefinition)
-            ItemDefinition = (UFortItemDefinition*)TUObjectArray::FindObject(Args[1].c_str(), UFortItemDefinition::StaticClass());
 
         if (!ItemDefinition)
         {

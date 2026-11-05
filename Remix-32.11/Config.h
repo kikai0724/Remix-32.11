@@ -1,7 +1,7 @@
 #pragma once
 
 inline constexpr int Port = 7777;
-inline bool bReload = true;
+inline bool bReload = false;
 inline bool bEvent = false;
 inline bool bDuo = false;
 inline std::wstring ReloadPlaylist = L"/BlastBerry/Playlists/Playlist_PunchBerrySolo.Playlist_PunchBerrySolo";
@@ -21,6 +21,9 @@ inline std::vector<std::pair<std::wstring, int>> LateGameLoadout;
 inline bool bRecordReplays = true;
 inline bool bPlayerBots = true;
 inline bool bAutoRestart = true;
+inline int SiphonAmount = 50;
+inline bool bInfiniteMats = true;
+inline bool bInfiniteAmmo = true;
 inline std::wstring BackendUrl;
 inline std::wstring ClientId;
 inline std::wstring ClientSecret;

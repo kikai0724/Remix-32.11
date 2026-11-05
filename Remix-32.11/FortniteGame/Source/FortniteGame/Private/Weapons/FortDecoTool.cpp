@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Shared.h"
+#include "Config.h"
 #include "FortniteGame/Source/FortniteGame/Public/Items/FortInventory.h"
 
 INIT_POSTLOAD(AFortDecoTool);
@@ -162,7 +163,7 @@ static void ServerCreateBuildingAndSpawnDeco(UObject* Context, FFrame& Stack, vo
 
     static auto CanAffordToPlaceBuildableClass = (bool (*)(AFortPlayerControllerAthena*, FBuildingClassData))(ImageBase + 0xA21CED8);
 
-    if (!CanAffordToPlaceBuildableClass(PlayerController, BuildingClassData))
+    if (!bInfiniteMats && !CanAffordToPlaceBuildableClass(PlayerController, BuildingClassData))
         return;
 
     static auto CantBuild = (__int64 (*)(UWorld*, TSubclassOf<ABuildingActor>&, FVector, FRotator, bool, TArray<ABuildingSMActor*>*, char*))(ImageBase + 0x9A95ED4);
@@ -190,7 +191,7 @@ static void ServerCreateBuildingAndSpawnDeco(UObject* Context, FFrame& Stack, vo
     Building->Team = (EFortTeam)((AFortPlayerStateAthena*)PlayerController->PlayerState)->TeamIndex;
     Building->TeamIndex = (uint8)Building->Team;
 
-    if (!PlayerController->bBuildFree)
+    if (!PlayerController->bBuildFree && !bInfiniteMats)
     {
         static auto PayBuildableClassPlacementCost = (int (*)(AFortPlayerControllerAthena*, FBuildingClassData))(ImageBase + 0xA24BD50);
 

@@ -335,6 +335,9 @@ static bool bResolvedEffects = false;
 
 static void ApplySiphon(AFortPlayerStateAthena* KillerPlayerState, AFortPlayerPawnAthena* KillerPawn, AFortPlayerControllerAthena* KillerPlayerController)
 {
+    if (SiphonAmount <= 0)
+        return;
+
     if (!bResolvedEffects)
     {
         bResolvedEffects = true;
@@ -356,7 +359,7 @@ static void ApplySiphon(AFortPlayerStateAthena* KillerPlayerState, AFortPlayerPa
         auto MaxHealth = KillerPawn->GetMaxHealth();
         auto Shield = KillerPawn->GetShield();
         auto MaxShield = KillerPawn->GetMaxShield();
-        auto Pool = 50.f;
+        auto Pool = (float)SiphonAmount;
         float HealthHeal = 0.f;
         float ShieldHeal = 0.f;
 
