@@ -350,14 +350,18 @@ static void OnPossesedPawnDied(AFortAthenaAIBotController* Controller, AFortPawn
         ReportElimination(GameMode, PlayerState, KillerPlayerState, KillerPawn, GetKillerWeapon(DamageCauser), PlayerState->DeathInfo.DeathCause);
 }
 
-static void ApplyCosmeticLoadout(AFortAthenaAIBotController* Controller, void* CosmeticLoadout)
+static void ApplyBotCharacterCustomization(AFortAthenaAIBotController* Controller)
 {
     static auto ApplyCharacterCustomization = (void (*)(APlayerState*, AFortPawn*, bool))(ImageBase + 0xA2C731C);
 
-    ApplyCosmeticLoadoutOG(Controller, CosmeticLoadout);
-
     if (Controller->PlayerState && Controller->PlayerBotPawn)
-        ApplyCharacterCustomization(Controller->PlayerState, nullptr, false);
+        ApplyCharacterCustomization(Controller->PlayerState, Controller->PlayerBotPawn, false);
+}
+
+static void ApplyCosmeticLoadout(AFortAthenaAIBotController* Controller, void* CosmeticLoadout)
+{
+    ApplyCosmeticLoadoutOG(Controller, CosmeticLoadout);
+    ApplyBotCharacterCustomization(Controller);
 }
 
 static bool IsLateGameBot(AFortAthenaAIBotController* Controller)
@@ -379,6 +383,7 @@ static bool RestartBot(AFortAthenaAIBotController* Controller, AActor* StartSpot
     if (bRestarted && IsLateGameBot(Controller))
     {
         PlaceLateGamePawn(Controller, Controller->PlayerBotPawn);
+        ApplyBotCharacterCustomization(Controller);
         GiveBotLateGameLoadout(Controller);
     }
 
@@ -393,7 +398,10 @@ static void RespawnPlayerAfterDeath(AFortAthenaAIBotController* Controller, cons
     auto bAlive = (*(uint8*)(uint64(Controller) + 0xB74) & 0x10) != 0;
 
     if (bAlive && IsLateGameBot(Controller))
+    {
+        ApplyBotCharacterCustomization(Controller);
         GiveBotLateGameLoadout(Controller);
+    }
 }
 
 static float FRand()

@@ -7,11 +7,18 @@
 #include "FortniteGame/Source/FortniteGame/Public/Athena/FortGameModeAthena.h"
 #include "FortniteGame/Source/FortniteGame/Public/Athena/FortPlayerControllerAthena.h"
 #include "FortniteGame/Source/FortniteGame/Public/Quests/FortQuestManager.h"
+#include "SDK/SDK/QuailPlaylistRuntime_classes.hpp"
+#include "SDK/SDK/QuailPlaylistRuntime_parameters.hpp"
 
 INIT_MODULE(UFortGameStateComponent_BattleRoyaleGamePhaseLogic);
 INIT_TICKER(UFortGameStateComponent_BattleRoyaleGamePhaseLogic);
 
 TArray<FVector> SafeZoneLocations;
+
+static bool bQuailEventStartScheduled = false;
+static bool bQuailEventStarted = false;
+static bool bQuailEventManagerMissingLogged = false;
+static double QuailEventStartTime = -1.0;
 
 void SetGamePhase(UFortGameStateComponent_BattleRoyaleGamePhaseLogic* GamePhaseLogic, EAthenaGamePhase GamePhase)
 {
@@ -328,6 +335,40 @@ void UFortGameStateComponent_BattleRoyaleGamePhaseLogic__Tick()
 
     auto Time = UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
     auto GameMode = (AFortGameModeAthena*)UWorld::GetWorld()->AuthorityGameMode;
+
+    if (bEvent && !bQuailEventStarted)
+    {
+        if (!bQuailEventStartScheduled && GameMode && GameMode->AlivePlayers.Num() > 0)
+        {
+            bQuailEventStartScheduled = true;
+            QuailEventStartTime = Time + 30.f;
+            OutputDebugStringA("Quail event scheduled to start 30 seconds after the first player joins.\n");
+        }
+
+        if (bQuailEventStartScheduled && Time >= QuailEventStartTime)
+        {
+            TArray<AActor*> EventManagers;
+            UGameplayStatics::GetAllActorsOfClass(UWorld::GetWorld(), AQuailEventManager::StaticClass(), &EventManagers);
+
+            if (EventManagers.Num() > 0 && EventManagers[0])
+            {
+                auto EventManager = (AQuailEventManager*)EventManagers[0];
+                auto TriggerEventFunction = EventManager->Class->GetFunction("QuailEventManager", "TriggerEvent_Native");
+                Params::QuailEventManager_TriggerEvent_Native Parameters{};
+                Parameters.EventName = FString(L"StartEvent");
+                Parameters.execContext = EQuailEventExecutionContext::GameServer;
+                Parameters.EventParams = FString(L"");
+                EventManager->ProcessEvent(TriggerEventFunction, &Parameters);
+                bQuailEventStarted = true;
+                OutputDebugStringA("Started the Quail event.\n");
+            }
+            else if (!bQuailEventManagerMissingLogged)
+            {
+                bQuailEventManagerMissingLogged = true;
+                OutputDebugStringA("Cannot start the Quail event: no QuailEventManager was found in the world.\n");
+            }
+        }
+    }
 
     if (!bSkipAircraft)
     {

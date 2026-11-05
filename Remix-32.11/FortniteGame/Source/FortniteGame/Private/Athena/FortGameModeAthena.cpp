@@ -16,11 +16,14 @@
 
 INIT_MODULE(AFortGameModeAthena);
 INIT_POSTLOAD(AFortGameModeAthena);
+INIT_TICKER(AFortGameModeAthena);
 
 static TArray<UFortAbilitySet*> AbilitySets;
-static bool bSkipWarmup = false;
 bool bSkipAircraft = false;
 uint8 PauseWarmupMask = 0;
+static bool bHadRealPlayer = false;
+static bool bCheckForEmptyServer = false;
+static AFortGameModeAthena* EmptyServerCheckGameMode = nullptr;
 
 static TArray<FName> LevelsToStream;
 
@@ -549,7 +552,6 @@ static void ReadyToStartMatch(UObject* Context, FFrame& Stack, bool* Ret)
 
         if (Playlist)
         {
-            bSkipWarmup = Playlist->bSkipWarmup;
             bSkipAircraft = Playlist->bSkipAircraft;
         }
 
@@ -777,6 +779,9 @@ static void HandleStartingNewPlayer(UObject* Context, FFrame& Stack, void* Ret)
     auto PlayerController = (AFortPlayerControllerAthena*)NewPlayer;
     auto PlayerState = (AFortPlayerStateAthena*)PlayerController->PlayerState;
 
+    if (PlayerState && !PlayerState->bIsABot)
+        bHadRealPlayer = true;
+
     PlayerState->OnRep_SquadId();
 
     FGameMemberInfo Member{};
@@ -828,18 +833,14 @@ static void HandleMatchHasStarted(AFortGameModeAthena* GameMode)
     HandleMatchHasStartedOG(GameMode);
     auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(GameMode);
 
-    if (!bSkipWarmup)
-    {
-        auto Time = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
+    auto Time = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
 
-        GamePhaseLogic->WarmupCountdownStartTime = Time;
-        GamePhaseLogic->WarmupCountdownEndTime = Time + GamePhaseLogic->WarmupCountdownDuration;
+    GamePhaseLogic->WarmupCountdownDuration = bLateGame ? 20.f : 60.f;
+    GamePhaseLogic->WarmupCountdownStartTime = Time;
+    GamePhaseLogic->WarmupCountdownEndTime = Time + GamePhaseLogic->WarmupCountdownDuration;
 
-        SetGamePhase(GamePhaseLogic, EAthenaGamePhase::Warmup);
-        SetGamePhaseStep(GamePhaseLogic, EAthenaGamePhaseStep::Warmup);
-    }
-    else
-        StartAircraftPhase(GamePhaseLogic);
+    SetGamePhase(GamePhaseLogic, EAthenaGamePhase::Warmup);
+    SetGamePhaseStep(GamePhaseLogic, EAthenaGamePhaseStep::Warmup);
 }
 
 static void AddLootTierData(UDataTable* Table)
@@ -1023,6 +1024,45 @@ static void HandlePawnKilled(AGameModeBase* GameMode, AActor* Killer, AControlle
     SendRequestedMatchReports(-1.0);
 }
 
+static void (*OnCheckForOrphanedServerOG)(UObject*, FFrame&, void*);
+static void OnCheckForOrphanedServer(UObject* Context, FFrame& Stack, void* Ret)
+{
+    bool bFromPlayerLogout;
+    bool bConsiderPendingPlayers;
+    Stack.StepCompiledIn(&bFromPlayerLogout);
+    Stack.StepCompiledIn(&bConsiderPendingPlayers);
+    Stack.IncrementCode();
+
+    auto GameMode = (AFortGameModeAthena*)Context;
+    callOG(GameMode, Stack.CurrentNativeFunction, OnCheckForOrphanedServer, bFromPlayerLogout, bConsiderPendingPlayers);
+
+    if (bFromPlayerLogout && bHadRealPlayer)
+    {
+        EmptyServerCheckGameMode = GameMode;
+        bCheckForEmptyServer = true;
+    }
+}
+
+void AFortGameModeAthena__Tick()
+{
+    if (!bCheckForEmptyServer || !EmptyServerCheckGameMode || !EmptyServerCheckGameMode->GameState)
+        return;
+
+    auto GameState = EmptyServerCheckGameMode->GameState;
+
+    for (auto PlayerState : GameState->PlayerArray)
+    {
+        if (PlayerState && !PlayerState->bIsABot)
+        {
+            bCheckForEmptyServer = false;
+            EmptyServerCheckGameMode = nullptr;
+            return;
+        }
+    }
+
+    ExitProcess(0);
+}
+
 void AFortGameModeAthena__Init()
 {
     ConfiguredPlaylist = Playlist;
@@ -1047,4 +1087,5 @@ void AFortGameModeAthena__PostLoad()
     Hook(ImageBase + 0x91886F8, OnPawnDeathNoRespawn, OnPawnDeathNoRespawnOG);
 
     Hook(ImageBase + 0x9186CF8, HandlePawnKilled, HandlePawnKilledOG);
+    ExecHook(AFortGameModeAthena::StaticClass()->FindFunction("OnCheckForOrphanedServer"), OnCheckForOrphanedServer, OnCheckForOrphanedServerOG);
 }
