@@ -21,6 +21,9 @@ void Main()
     for (auto Command : { L"log LogFortUIDirector None", L"log LogFortUIManager None", L"net.AllowEncryption 0", L"log LogIris None", L"log LogIrisRpc None", L"log LogIrisBridge None" })
         UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), Command, nullptr);
 
+    if (VersionInfo.EngineVersion >= 5.4)
+        UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), L"Fort.MME.Clambering 0", nullptr);
+
     *(int32_t*)(ImageBase + 0x12C4E6D0) = 2;
     *(bool*)(ImageBase + 0x12DDB468) = false;
     *(uint32_t*)(ImageBase + 0x12F2F6F0) = 1;
