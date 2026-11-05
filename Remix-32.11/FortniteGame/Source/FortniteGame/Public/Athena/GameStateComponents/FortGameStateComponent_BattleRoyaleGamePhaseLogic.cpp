@@ -282,6 +282,41 @@ static bool bBusUnlocked = false;
 static bool bStartedForming = false;
 static bool bFormedZone = false;
 static bool bSafeZoneShrinking = false;
+bool bAdminSafeZonePaused = false;
+static float AdminSafeZonePauseTime = 0.f;
+
+void SetAdminSafeZonePaused(bool bPaused)
+{
+    if (bAdminSafeZonePaused == bPaused)
+        return;
+
+    auto Now = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
+
+    if (bPaused)
+    {
+        AdminSafeZonePauseTime = Now;
+        bAdminSafeZonePaused = true;
+        return;
+    }
+
+    auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld());
+
+    if (GamePhaseLogic)
+    {
+        auto PausedDuration = Now - AdminSafeZonePauseTime;
+
+        if (GamePhaseLogic->SafeZonesStartTime >= 0.f)
+            GamePhaseLogic->SafeZonesStartTime += PausedDuration;
+
+        if (auto SafeZoneIndicator = GamePhaseLogic->SafeZoneIndicator)
+        {
+            SafeZoneIndicator->SafeZoneStartShrinkTime += PausedDuration;
+            SafeZoneIndicator->SafeZoneFinishShrinkTime += PausedDuration;
+        }
+    }
+
+    bAdminSafeZonePaused = false;
+}
 
 static AFortAthenaAircraft* GetActiveAircraft(AFortGameModeAthena* GameMode, UFortGameStateComponent_BattleRoyaleGamePhaseLogic* GamePhaseLogic)
 {
@@ -455,6 +490,9 @@ void UFortGameStateComponent_BattleRoyaleGamePhaseLogic__Tick()
     }
 
     if (!bEnableZones || GamePhaseLogic->GamePhase != EAthenaGamePhase::SafeZones)
+        return;
+
+    if (bAdminSafeZonePaused)
         return;
 
     if (bFinishedFlight && !bFormedZone && GameMode->AlivePlayers.Num() > 0 && GamePhaseLogic->SafeZonesStartTime != -1 && GamePhaseLogic->SafeZonesStartTime < Time)

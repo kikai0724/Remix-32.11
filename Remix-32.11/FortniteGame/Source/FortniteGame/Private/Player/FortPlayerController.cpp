@@ -6,6 +6,9 @@
 #include "FortniteGame/Source/FortniteGame/Public/Items/FortInventory.h"
 #include "FortniteGame/Source/FortniteGame/Public/Items/FortPickup.h"
 #include "FortniteGame/Source/FortniteGame/Public/Quests/FortQuestManager.h"
+#include "FortniteGame/Source/FortniteGame/Public/Athena/GameStateComponents/FortGameStateComponent_BattleRoyaleGamePhaseLogic.h"
+#include <cctype>
+#include <cstdlib>
 
 INIT_POSTLOAD(AFortPlayerController);
 
@@ -706,10 +709,185 @@ static bool RemoveInventoryItem(void* Interface, FGuid& ItemGuid, int32 Count, b
     return RemoveInventoryItem((AFortInventory*)PlayerController->WorldInventory.ObjectPointer, ItemGuid, Count, bForceRemoval, bForcePersistWhenEmpty);
 }
 
+static void (*ServerCheatOG)(UObject*, FFrame&, void*);
+
+static void StartSpecialEvent()
+{
+    TArray<AActor*> MeshActors;
+    TArray<AActor*> EventScripts;
+    UGameplayStatics::GetAllActorsOfClass(UWorld::GetWorld(), ASpecialEventScriptMeshActor::StaticClass(), &MeshActors);
+    UGameplayStatics::GetAllActorsOfClass(UWorld::GetWorld(), ASpecialEventScript::StaticClass(), &EventScripts);
+
+    if (MeshActors.Num() == 0 || EventScripts.Num() == 0 || !MeshActors[0] || !EventScripts[0])
+    {
+        printf("[Admin] Cannot start the event: event actors were not found in the world.\n");
+        return;
+    }
+
+    auto MeshActor = (ASpecialEventScriptMeshActor*)MeshActors[0];
+    auto EventScript = (ASpecialEventScript*)EventScripts[0];
+    EventScript->DelayAfterConentLoad.Curve.CurveTable = nullptr;
+    EventScript->DelayAfterConentLoad.Value = 0.6f;
+
+    auto MeshNetworkSubsystem = GetFirstInstance<UMeshNetworkSubsystem>();
+
+    if (MeshNetworkSubsystem)
+        MeshNetworkSubsystem->NodeType = EMeshNetworkNodeType::Root;
+
+    MeshActor->MeshRootStartEvent();
+
+    if (MeshNetworkSubsystem)
+        MeshNetworkSubsystem->NodeType = EMeshNetworkNodeType::Edge;
+
+    MeshActor->OnRep_RootStartTime(FDateTime());
+}
+
+static void ServerCheat(UObject* Context, FFrame& Stack, void* Result)
+{
+    auto OriginalStack = Stack;
+    FString Message;
+    Stack.StepCompiledIn(&Message);
+    Stack.IncrementCode();
+
+    auto PlayerController = (AFortPlayerControllerAthena*)Context;
+    auto FullCommand = Message.ToString();
+    std::vector<std::string> Args;
+
+    size_t LastPosition = 0;
+    while (LastPosition < FullCommand.size())
+    {
+        auto Position = FullCommand.find(' ', LastPosition);
+        auto Length = Position == std::string::npos ? std::string::npos : Position - LastPosition;
+
+        if (Length != 0)
+            Args.emplace_back(FullCommand.substr(LastPosition, Length));
+
+        if (Position == std::string::npos)
+            break;
+
+        LastPosition = Position + 1;
+    }
+
+    if (Args.empty())
+    {
+        if (ServerCheatOG)
+            ServerCheatOG(Context, OriginalStack, Result);
+        return;
+    }
+
+    auto& Command = Args[0];
+    std::transform(Command.begin(), Command.end(), Command.begin(), [](unsigned char Character) { return (char)std::tolower(Character); });
+
+    if (Command == "start" && Args.size() > 1)
+    {
+        std::transform(Args[1].begin(), Args[1].end(), Args[1].begin(), [](unsigned char Character) { return (char)std::tolower(Character); });
+        if (Args[1] == "aircraft")
+            Command = "startaircraft";
+    }
+
+    if (Command == "giveitem")
+    {
+        if (!PlayerController || !PlayerController->MyFortPawn || (Args.size() != 2 && Args.size() != 3))
+        {
+            printf("[Admin] Usage: giveitem <item path> [count]\n");
+            return;
+        }
+
+        int Count = 1;
+        if (Args.size() == 3)
+        {
+            char* End = nullptr;
+            auto ParsedCount = std::strtol(Args[2].c_str(), &End, 10);
+            if (!End || *End || ParsedCount < 1 || ParsedCount > 999)
+            {
+                printf("[Admin] Item count must be between 1 and 999.\n");
+                return;
+            }
+
+            Count = (int)ParsedCount;
+        }
+
+        UEAllocatedWString ItemPath(Args[1].begin(), Args[1].end());
+        auto ItemDefinition = FindObject<UFortItemDefinition>(ItemPath.c_str());
+
+        if (!ItemDefinition)
+            ItemDefinition = (UFortItemDefinition*)TUObjectArray::FindObject(Args[1].c_str(), UFortItemDefinition::StaticClass());
+
+        if (!ItemDefinition)
+        {
+            printf("[Admin] Item definition not found: %s\n", Args[1].c_str());
+            return;
+        }
+
+        auto Inventory = (AFortInventory*)PlayerController->WorldInventory.ObjectPointer;
+        if (!Inventory || !GiveItem(Inventory, ItemDefinition, Count))
+        {
+            printf("[Admin] Could not give item: %s\n", Args[1].c_str());
+            return;
+        }
+
+        return;
+    }
+
+    if (Command == "startaircraft")
+    {
+        if (auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld()))
+            StartAircraftPhase(GamePhaseLogic);
+        else
+            printf("[Admin] Cannot start aircraft: game phase logic is unavailable.\n");
+
+        return;
+    }
+
+    if (Command == "pausesafezone")
+    {
+        SetAdminSafeZonePaused(true);
+        UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), L"pausesafezone", nullptr);
+        return;
+    }
+
+    if (Command == "startsafezone")
+    {
+        SetAdminSafeZonePaused(false);
+        UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), L"startsafezone", nullptr);
+        return;
+    }
+
+    if (Command == "skipsafezone" || Command == "startshrinkingsafezone")
+    {
+        auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld());
+        auto SafeZoneIndicator = GamePhaseLogic ? GamePhaseLogic->SafeZoneIndicator : nullptr;
+
+        if (!SafeZoneIndicator)
+        {
+            printf("[Admin] Safe zone indicator is unavailable.\n");
+            return;
+        }
+
+        auto Now = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
+        SafeZoneIndicator->SafeZoneStartShrinkTime = Now;
+
+        if (Command == "skipsafezone")
+            SafeZoneIndicator->SafeZoneFinishShrinkTime = Now + 0.05f;
+
+        return;
+    }
+
+    if (Command == "startevent")
+    {
+        StartSpecialEvent();
+        return;
+    }
+
+    if (ServerCheatOG)
+        ServerCheatOG(Context, OriginalStack, Result);
+}
+
 void AFortPlayerController__PostLoad()
 {
     auto PlayerControllerClass = AFortPlayerControllerAthena::StaticClass();
 
+    ExecHook(PlayerControllerClass->FindFunction("ServerCheat"), ServerCheat, ServerCheatOG);
     ExecHook(PlayerControllerClass->FindFunction("ServerExecuteInventoryItem"), ServerExecuteInventoryItem);
     ExecHook(PlayerControllerClass->FindFunction("ServerCreateBuildingActor"), ServerCreateBuildingActor);
     ExecHook(PlayerControllerClass->FindFunction("ServerBeginEditingBuildingActor"), ServerBeginEditingBuildingActor);
