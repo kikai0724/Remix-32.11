@@ -9,6 +9,7 @@
 #include "FortniteGame/Source/FortniteGame/Public/Quests/FortQuestManager.h"
 #include "FortniteGame/Source/FortniteGame/Public/Athena/GameStateComponents/FortGameStateComponent_BattleRoyaleGamePhaseLogic.h"
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 
 INIT_POSTLOAD(AFortPlayerController);
@@ -835,6 +836,60 @@ static void ServerCheat(UObject* Context, FFrame& Stack, void* Result)
             printf("[Admin] Could not give item: %s\n", Args[1].c_str());
             return;
         }
+
+        return;
+    }
+
+    if (Command == "infiniteammo")
+    {
+        bInfiniteAmmo = !bInfiniteAmmo;
+        printf("[Cheat] Infinite ammo %s.\n", bInfiniteAmmo ? "enabled" : "disabled");
+        return;
+    }
+
+    if (Command == "infinitemats")
+    {
+        bInfiniteMats = !bInfiniteMats;
+        printf("[Cheat] Infinite materials %s.\n", bInfiniteMats ? "enabled" : "disabled");
+        return;
+    }
+
+    if (Command == "buildfree")
+    {
+        if (!PlayerController)
+            return;
+
+        PlayerController->bBuildFree = !PlayerController->bBuildFree;
+        printf("[Cheat] Free building %s.\n", PlayerController->bBuildFree ? "enabled" : "disabled");
+        return;
+    }
+
+    if (Command == "speed")
+    {
+        if (!PlayerController || !PlayerController->MyFortPawn || Args.size() != 2)
+        {
+            printf("[Cheat] Usage: speed <positive multiplier>\n");
+            return;
+        }
+
+        char* End = nullptr;
+        auto Speed = std::strtof(Args[1].c_str(), &End);
+        if (!End || End == Args[1].c_str() || *End || !std::isfinite(Speed) || Speed <= 0.f)
+        {
+            printf("[Cheat] Speed must be a positive finite number.\n");
+            return;
+        }
+
+        PlayerController->MyFortPawn->SetMovementSpeedMultiplier(Speed);
+        return;
+    }
+
+    if (Command == "dc")
+    {
+        if (PlayerController && PlayerController->CheatManager)
+            PlayerController->CheatManager->ToggleDebugCamera();
+        else
+            printf("[Cheat] Debug camera is unavailable.\n");
 
         return;
     }

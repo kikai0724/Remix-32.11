@@ -1061,7 +1061,7 @@ void AFortGameModeAthena__Tick()
     }
 
     if (bAutoRestart)
-        ExitProcess(0);
+        TerminateProcess(GetCurrentProcess(), 0);
 }
 
 void AFortGameModeAthena__Init()
