@@ -1060,7 +1060,8 @@ void AFortGameModeAthena__Tick()
         }
     }
 
-    ExitProcess(0);
+    if (bAutoRestart)
+        ExitProcess(0);
 }
 
 void AFortGameModeAthena__Init()
