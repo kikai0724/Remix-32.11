@@ -20,6 +20,7 @@ inline bool bLateGameMovingBus = true;
 inline std::vector<std::pair<std::wstring, int>> LateGameLoadout;
 inline bool bRecordReplays = true;
 inline bool bPlayerBots = true;
+inline float BotSpawnIntervalSeconds = 0.5f;
 inline bool bAutoRestart = true;
 inline int SiphonAmount = 50;
 inline bool bInfiniteMats = true;

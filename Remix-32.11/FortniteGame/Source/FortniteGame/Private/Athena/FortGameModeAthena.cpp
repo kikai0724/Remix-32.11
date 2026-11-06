@@ -1024,6 +1024,11 @@ static void HandlePawnKilled(AGameModeBase* GameMode, AActor* Killer, AControlle
 
 void AFortGameModeAthena__Tick()
 {
+    static bool bExitRequested = false;
+
+    if (bExitRequested)
+        return;
+
     if (!bAutoRestart || !bHadRealPlayer)
         return;
 
@@ -1033,8 +1038,10 @@ void AFortGameModeAthena__Tick()
     if (!NetDriver || NetDriver->ClientConnections.Num() > 0)
         return;
 
+    bExitRequested = true;
     printf("[AutoRestart] No connected clients; exiting process.\n");
-    TerminateProcess(GetCurrentProcess(), 0);
+    fflush(stdout);
+    ExitProcess(0);
 }
 
 void AFortGameModeAthena__Init()

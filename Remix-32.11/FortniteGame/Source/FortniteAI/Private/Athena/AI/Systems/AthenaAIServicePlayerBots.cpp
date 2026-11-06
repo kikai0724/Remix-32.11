@@ -922,6 +922,24 @@ static void StartSpawning(UAthenaAIServicePlayerBots* Service, void* FlowNode)
 {
     auto GameMode = (AFortGameModeAthena*)UWorld::GetWorld()->AuthorityGameMode;
 
+    if (bPlayerBots && BotSpawnIntervalSeconds > 0.f)
+    {
+        auto SpawnerDataClass = Service ? Service->DefaultBotAISpawnerData : nullptr;
+        auto SpawnerData = SpawnerDataClass
+            ? (UFortAthenaAISpawnerData*)SpawnerDataClass->ClassDefaultObject
+            : nullptr;
+
+        if (SpawnerData)
+        {
+            SpawnerData->SpawnIntervalOverride = FScalableFloat{};
+            SpawnerData->SpawnIntervalOverride.Value = BotSpawnIntervalSeconds;
+        }
+        else
+        {
+            printf("[Bots] Unable to apply spawn interval: default spawner data is unavailable.\n");
+        }
+    }
+
     if (!bPlayerBots && GameMode)
     {
         GameMode->PlaylistEnableBots.Value = 0.f;
