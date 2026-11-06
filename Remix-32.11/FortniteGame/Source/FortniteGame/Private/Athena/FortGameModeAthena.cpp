@@ -22,8 +22,6 @@ static TArray<UFortAbilitySet*> AbilitySets;
 bool bSkipAircraft = false;
 uint8 PauseWarmupMask = 0;
 static bool bHadRealPlayer = false;
-static bool bCheckForEmptyServer = false;
-static AFortGameModeAthena* EmptyServerCheckGameMode = nullptr;
 
 static TArray<FName> LevelsToStream;
 
@@ -1024,44 +1022,19 @@ static void HandlePawnKilled(AGameModeBase* GameMode, AActor* Killer, AControlle
     SendRequestedMatchReports(-1.0);
 }
 
-static void (*OnCheckForOrphanedServerOG)(UObject*, FFrame&, void*);
-static void OnCheckForOrphanedServer(UObject* Context, FFrame& Stack, void* Ret)
-{
-    bool bFromPlayerLogout;
-    bool bConsiderPendingPlayers;
-    Stack.StepCompiledIn(&bFromPlayerLogout);
-    Stack.StepCompiledIn(&bConsiderPendingPlayers);
-    Stack.IncrementCode();
-
-    auto GameMode = (AFortGameModeAthena*)Context;
-    callOG(GameMode, Stack.CurrentNativeFunction, OnCheckForOrphanedServer, bFromPlayerLogout, bConsiderPendingPlayers);
-
-    if (bFromPlayerLogout && bHadRealPlayer)
-    {
-        EmptyServerCheckGameMode = GameMode;
-        bCheckForEmptyServer = true;
-    }
-}
-
 void AFortGameModeAthena__Tick()
 {
-    if (!bCheckForEmptyServer || !EmptyServerCheckGameMode || !EmptyServerCheckGameMode->GameState)
+    if (!bAutoRestart || !bHadRealPlayer)
         return;
 
-    auto GameState = EmptyServerCheckGameMode->GameState;
+    auto World = UWorld::GetWorld();
+    auto NetDriver = World ? World->NetDriver : nullptr;
 
-    for (auto PlayerState : GameState->PlayerArray)
-    {
-        if (PlayerState && !PlayerState->bIsABot)
-        {
-            bCheckForEmptyServer = false;
-            EmptyServerCheckGameMode = nullptr;
-            return;
-        }
-    }
+    if (!NetDriver || NetDriver->ClientConnections.Num() > 0)
+        return;
 
-    if (bAutoRestart)
-        TerminateProcess(GetCurrentProcess(), 0);
+    printf("[AutoRestart] No connected clients; exiting process.\n");
+    TerminateProcess(GetCurrentProcess(), 0);
 }
 
 void AFortGameModeAthena__Init()
@@ -1088,5 +1061,4 @@ void AFortGameModeAthena__PostLoad()
     Hook(ImageBase + 0x91886F8, OnPawnDeathNoRespawn, OnPawnDeathNoRespawnOG);
 
     Hook(ImageBase + 0x9186CF8, HandlePawnKilled, HandlePawnKilledOG);
-    ExecHook(AFortGameModeAthena::StaticClass()->FindFunction("OnCheckForOrphanedServer"), OnCheckForOrphanedServer, OnCheckForOrphanedServerOG);
 }
