@@ -53,19 +53,7 @@ void PauseWarmup(EGameModePauseWarmupMaskId MaskId)
 
 void UnPauseWarmup(EGameModePauseWarmupMaskId MaskId)
 {
-    auto bWasPaused = PauseWarmupMask != 0;
-
     PauseWarmupMask &= ~uint8(MaskId);
-
-    auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld());
-
-    if (bWasPaused && !PauseWarmupMask && GamePhaseLogic && GamePhaseLogic->GamePhase == EAthenaGamePhase::Warmup)
-    {
-        auto Time = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
-
-        GamePhaseLogic->WarmupCountdownStartTime = Time;
-        GamePhaseLogic->WarmupCountdownEndTime = Time + GamePhaseLogic->WarmupCountdownDuration;
-    }
 }
 
 static FProperty* FindProperty(const UObject* Object, const char* Name)
